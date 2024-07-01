@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="basic">
+      <UniqueIdentifier>{d3ca1f25-cb09-44a3-98b3-d226ddbff321}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Initial_demo.h">
@@ -22,15 +25,21 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="framework.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>头文件</Filter>
+      <Filter>basic</Filter>
     </ClInclude>
     <ClInclude Include="pch.h">
+      <Filter>basic</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>basic</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>basic</Filter>
+    </ClInclude>
+    <ClInclude Include="GlobalDefine.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GlobalData.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -42,6 +51,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="pch.cpp">
+      <Filter>basic</Filter>
+    </ClCompile>
+    <ClCompile Include="GlobalData.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

@@ -39,6 +39,7 @@ void CInitialdemoDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CInitialdemoDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BUTTON_OPEN, &CInitialdemoDlg::OnBnClickedButtonOpen)
 END_MESSAGE_MAP()
 
 
@@ -94,3 +95,14 @@ HCURSOR CInitialdemoDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+
+
+void CInitialdemoDlg::OnBnClickedButtonOpen()
+{
+	CFileDialog dlg(TRUE);
+	if (IDOK != dlg.DoModal())
+		return;
+
+	CString szFilePath = dlg.GetPathName();
+	avformat_alloc_context();
+}

@@ -105,6 +105,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
+    <ClInclude Include="GlobalData.h" />
+    <ClInclude Include="GlobalDefine.h" />
     <ClInclude Include="Initial_demo.h" />
     <ClInclude Include="Initial_demoDlg.h" />
     <ClInclude Include="pch.h" />
@@ -112,6 +114,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="GlobalData.cpp" />
     <ClCompile Include="Initial_demo.cpp" />
     <ClCompile Include="Initial_demoDlg.cpp" />
     <ClCompile Include="pch.cpp">
