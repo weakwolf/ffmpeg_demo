@@ -1,7 +1,8 @@
 #include "utils.h"
 
-void Log(const char* pInfo /* = NULL */)
+
+void Log(const char* pInfo, const char* pFileName, int iLine)
 {
-	printf("[simple player error] (%s) %s:%d\n", pInfo, __FILE__, __LINE__);
+	printf("[simple player error] (%s) %s:%d\n", pInfo, pFileName, iLine);
 }
 

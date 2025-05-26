@@ -1,6 +1,6 @@
 ﻿
 /**
- * 一个简单的视频播放器，base to https://blog.csdn.net/leixiaohua1020/article/details/38868499
+ * 一个简单的视频播放器，base to https://blog.csdn.net/leixiaohua1020/article/details/38868499 and ffmpeg official demo
  * 致敬雷神！！！
  * 坚持study!!!
  */
@@ -12,6 +12,7 @@ extern "C"
 #include "libswscale/swscale.h"
 #include "libavutil/avutil.h"
 #include "libavutil/error.h"
+#include <libavutil/imgutils.h>
 #include "SDL2/SDL.h"
 }
 
@@ -29,13 +30,33 @@ extern "C"
 #endif
 
 #include <cstdio>
+#include <cstdint>
 #include "utils.h"		
 
 // 将全局变量或者函数声明为static是为了让它仅在本文件中可见
-static AVFormatContext* pFmtCtx = NULL;
+
+static AVFormatContext* pFmtCtx		= NULL;
 static AVCodecContext* pVideoDecCtx = NULL;
 static AVCodecContext* pAudioDecCtx = NULL;
-const char* pFilePath = NULL;
+
+static const char*	pFilePath		= NULL;
+static const char*	pVideoOutput	= NULL;	// 视频帧输出地址
+static const char*	pAudioOutput	= NULL;	// 音频帧输出地址
+static FILE*		pVideoFile		= NULL;	// 视频文件描述符
+static FILE*		pAudioFile		= NULL;	// 音频文件描述符
+
+static int			iVideoIndex		= -1;		// 视频流索引
+static int			iAudioIndex		= -1;		// 音频流索引
+static AVStream*	pVideoStream	= NULL;
+static AVStream*	pAudioStream	= NULL;
+
+static int				iWidth			= -1;				// 视频宽
+static int				iHeight			= -1;				// 视频高
+static AVPixelFormat	pixFmt			= AV_PIX_FMT_NONE;	// 视频颜色空间
+static uint8_t*			videoData[4]	= { NULL };			// 存储视频的各plane
+static int				videoLinesize[4];
+static int				iVideoBufSize = -1;
+
 
 /**
  * 打开一个流
@@ -98,81 +119,100 @@ static int OpenCodecContext(OUT int* pStreamIdx, OUT AVCodecContext** ppDecCtx, 
 	}
 
 	*pStreamIdx = iStreamIndex;
+
+	return 0;
 }
 
 int main(int argc,char* argv[])
 {
-	if (argc < 2)
+	if (argc != 4)
 	{
-		Log("please choose a file!!!");
+		Log("invalid parameters",__FILE__,__LINE__);
 
 		return -1;
 	}
-
 	pFilePath = argv[1];
-	// 我们让接口自己分配pFmtCtx的内存
-	int iRes = avformat_open_input(&pFmtCtx, pInput, NULL, NULL);
-	if (iRes < 0)
+	const char* pVideoOutput = argv[2];
+	const char* pAudioOutput = argv[3];
+
+	int iRet = avformat_open_input(&pFmtCtx, pFilePath, NULL, NULL);
+	if (iRet < 0)
 	{
-		PRINT_FFMPEG_ERROR("failed to open input",iRes);
+		PRINT_FFMPEG_ERROR("open input error:", iRet);
+
+		return -1;
+	}
+	// 探查流信息
+	iRet = avformat_find_stream_info(pFmtCtx, NULL);
+	if (iRet < 0)
+	{
+		PRINT_FFMPEG_ERROR("could not detect stream info:", iRet);
 
 		goto end;
 	}
-	iRes = avformat_find_stream_info(pFmtCtx, NULL);
-	if (iRes < 0)
-	{
-		PRINT_FFMPEG_ERROR("failed to find stream info",iRes);
 
-		goto end;
-	}
-
-	// 处理视频流
-	// 判断是否存在视频流
-#if 1
-	int iVideoStream = -1;
-	iVideoStream = av_find_best_stream(pFmtCtx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
-#else
-	for (int i = 0; i < pFmtCtx->nb_streams; ++i)
+	// 初始化视频流相关
+	iRet = OpenCodecContext(&iVideoIndex, &pVideoDecCtx, pFmtCtx, AVMEDIA_TYPE_VIDEO);
+	if (iRet >= 0)
 	{
-		if (AVMEDIA_TYPE_VIDEO == pFmtCtx->streams[i]->codecpar->codec_type)
+		pVideoStream = pFmtCtx->streams[iRet];
+		pVideoFile = fopen(pVideoOutput, "wb+");
+		if (!pVideoFile)
 		{
-			iVideoStream = i;
-			break;
+			fprintf(stderr, "could not open video file\n");
+
+			goto end;
+		}
+
+		// 分配内存空间用于存放解码数据
+		iWidth = pVideoDecCtx->width;
+		iHeight = pVideoDecCtx->height;
+		pixFmt = pVideoDecCtx->pix_fmt;
+		iRet = av_image_alloc(videoData, videoLinesize, iWidth, iHeight, pixFmt, 1);
+		if (iRet < 0)
+		{
+			fprintf(stderr, "could not allocate image space\n");
+
+			goto end;
+		}
+		iVideoBufSize = iRet;
+	}
+	else
+	{
+		fprintf(stderr, "could open video stream\n");
+
+		goto end;
+	}
+
+	// 初始化音频流相关
+	iRet = OpenCodecContext(&iAudioIndex, &pAudioDecCtx, pFmtCtx, AVMEDIA_TYPE_AUDIO);
+	if (iRet >= 0)
+	{
+		pAudioStream = pFmtCtx->streams[iRet];
+		pAudioFile = fopen(pAudioOutput, "wb+");
+		if (!pAudioFile)
+		{
+			fprintf(stderr, "could not open audio file\n");
+
+			goto end;
 		}
 	}
-#endif
-	if (iVideoStream < 0)
+	else
 	{
-		Log("there is no video stream!!!\n");
-		avformat_close_input(&pFmtCtx);
+		fprintf(stderr, "could open audio stream\n");
 
-		return -1;
-	}
-	const AVCodec* pDecoder = avcodec_find_decoder(pFmtCtx->streams[iVideoStream]->codecpar->codec_id);
-	if (!pDecoder)
-	{
-		Log("there is no valid decoder!!!\n");
-		avformat_close_input(&pFmtCtx);
-		avformat_free_context(pFmtCtx);
-
-		return -1;
-	}
-	AVCodecContext* pCodecCtx = avcodec_alloc_context3(pDecoder);
-	avcodec_parameters_to_context(pCodecCtx, pFmtCtx->streams[iVideoStream]->codecpar);
-	iRes = avcodec_open2(pCodecCtx, pDecoder, NULL);
-	if (iRes < 0)
-	{
-		PRINT_FFMPEG_ERROR("open decoder error:", iRes);
-		avcodec_free_context(&pCodecCtx);
-		avformat_close_input(&pFmtCtx);
-		avformat_free_context(pFmtCtx);
-
-		return -1;
+		goto end;
 	}
 
+	av_dump_format(pFmtCtx, 0, pFilePath, 0);
 
-end:
-	avcodec_free_context(&pCodecCtx);
+end:// 资源释放
+	// av_freep和av_free的区别在于，前者会将指针置为NULL
+	av_freep(&videoData[0]);
+	SAFE_POINTER_CALL(pAudioFile, fclose(pAudioFile));
+	SAFE_POINTER_CALL(pVideoFile, fclose(pVideoFile));
+	avcodec_free_context(&pVideoDecCtx);
+	avcodec_free_context(&pAudioDecCtx);
 	avformat_close_input(&pFmtCtx);
 
 	return 0;
