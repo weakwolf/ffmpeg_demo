@@ -3,8 +3,8 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <IncludePath>$(SolutionDir)open_source\ffmpeg\Release\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(SolutionDir)open_source\ffmpeg\Release\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(SolutionDir)third_party\sdl2\release\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(SolutionDir)third_party\sdl2\release\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup />
   <ItemGroup />
