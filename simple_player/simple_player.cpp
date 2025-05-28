@@ -14,6 +14,8 @@ extern "C"
 #include "libavutil/error.h"
 #include <libavutil/imgutils.h>
 #include "SDL2/SDL.h"
+#include <libavutil/samplefmt.h>
+#include <libavutil/timestamp.h>
 }
 
 #pragma comment(lib,"avformat.lib")
@@ -55,7 +57,12 @@ static int				iHeight			= -1;				// 视频高
 static AVPixelFormat	pixFmt			= AV_PIX_FMT_NONE;	// 视频颜色空间
 static uint8_t*			videoData[4]	= { NULL };			// 存储视频的各plane
 static int				videoLinesize[4];
-static int				iVideoBufSize = -1;
+static int				iVideoBufSize	= -1;
+
+static AVPacket*	pPkt				= NULL;
+static AVFrame*		pFrame				= NULL;
+static int			iVideoFrameCount	= 0;
+static int			iAudioFrameCount	= 0;
 
 
 /**
@@ -121,6 +128,87 @@ static int OpenCodecContext(OUT int* pStreamIdx, OUT AVCodecContext** ppDecCtx, 
 	*pStreamIdx = iStreamIndex;
 
 	return 0;
+}
+
+static int OutputVideoFrame(AVFrame* pFrame)
+{
+	if (pFrame->width != iWidth || pFrame->height != iHeight || pFrame->format != pixFmt)
+	{
+		fprintf(stderr, "Error: Width, height and pixel format have to be "
+			"constant in a rawvideo file, but the width, height or "
+			"pixel format of the input video changed:\n"
+			"old: width = %d, height = %d, format = %s\n"
+			"new: width = %d, height = %d, format = %s\n",
+			iWidth, iHeight, av_get_pix_fmt_name(pixFmt),
+			pFrame->width, pFrame->height,
+			av_get_pix_fmt_name((AVPixelFormat)pFrame->format));
+
+		return -1;
+	}
+
+	printf("video frame index:%d\n", iVideoFrameCount++);
+
+	av_image_copy2(videoData, videoLinesize, pFrame->data,
+		pFrame->linesize, pixFmt,
+		iWidth, iHeight);
+
+	fwrite(videoData[0], 1, iVideoBufSize, pVideoFile);
+
+	return 0;
+}
+
+static int OutputAudioFrame(AVFrame* pFrame)
+{
+	size_t iUnpaddedLinesize = pFrame->nb_samples * av_get_bytes_per_sample((AVSampleFormat)pFrame->format);
+
+	printf("audio_frame n:%d nb_samples:%d pts:%lld time_base:%f \n",
+		iAudioFrameCount++, pFrame->nb_samples,
+		pFrame->pts, av_q2d(pAudioDecCtx->time_base));
+
+	av_image_copy2(videoData, videoLinesize, pFrame->data,
+		pFrame->linesize, pixFmt,
+		iWidth, iHeight);
+
+	fwrite(pFrame->extended_data[0], 1, iUnpaddedLinesize, pAudioFile);
+
+	return 0;
+}
+
+static int DecodePacket(AVCodecContext* pDec, const AVPacket* pPkt)
+{
+	int iRet = 0;
+
+	// 如果第二个参数为NULL，则代表清空所有缓冲
+	iRet = avcodec_send_packet(pDec, pPkt);
+	if (iRet < 0)
+	{
+		PRINT_FFMPEG_ERROR("invalid AVPacket,error:\n", iRet);
+
+		return iRet;
+	}
+
+	while (iRet >= 0)
+	{
+		iRet = avcodec_receive_frame(pDec, pFrame);
+		if (iRet < 0)
+		{
+			// 返回AVERROR(EAGIN)代表需要更多packet才能解码，返回EOF代表没有更多的输出帧了，其他都是错误情况
+			if (AVERROR_EOF == iRet || AVERROR(EAGAIN) == iRet)
+				return 0;
+
+			PRINT_FFMPEG_ERROR("Error during decoding:", iRet);
+			return iRet;
+		}
+
+		if (AVMEDIA_TYPE_VIDEO == pVideoDecCtx->codec->type)
+			iRet = OutputVideoFrame(pFrame);
+		else
+			iRet = OutputAudioFrame(pFrame);
+
+		av_frame_unref(pFrame);
+	}
+
+	return iRet;
 }
 
 int main(int argc,char* argv[])
@@ -201,12 +289,59 @@ int main(int argc,char* argv[])
 	{
 		fprintf(stderr, "could open audio stream\n");
 
+		//goto end;
+	}
+	// 打印视音频元数据
+	av_dump_format(pFmtCtx, 0, pFilePath, 0);
+	if (!pVideoStream && !pAudioStream)
+	{
+		fprintf(stderr, "could not find video and audio stream\n");
+
 		goto end;
 	}
 
-	av_dump_format(pFmtCtx, 0, pFilePath, 0);
+	if (pVideoStream)
+		printf("Demuxing video from file '%s' into '%s'\n", pFilePath, pVideoOutput);
+	if (pAudioStream)
+		printf("Demuxing audio from file '%s' into '%s'\n", pFilePath, pAudioOutput);
+
+	pFrame = av_frame_alloc();
+	if (!pFrame)
+	{
+		fprintf(stderr, "could not allocate frame\n");
+
+		goto end;
+	}
+	pPkt = av_packet_alloc();
+	if (!pPkt)
+	{
+		fprintf(stderr, "could not allocate packet\n");
+
+		goto end;
+	}
+	// 开始解码
+	while (av_read_frame(pFmtCtx, pPkt) >= 0)
+	{
+		if (iVideoIndex == pPkt->stream_index)// 视频帧
+			iRet = DecodePacket(pVideoDecCtx, pPkt);
+		else if (iAudioIndex == pPkt->stream_index)// 音频帧
+			iRet = DecodePacket(pAudioDecCtx, pPkt);
+		else
+			// TODO: other
+		av_packet_unref(pPkt);
+
+		if(iRet < 0)// 返回值小于0说明有未知错误发生
+			break;
+	}
+	// flush decoders
+	if (pVideoDecCtx)
+		DecodePacket(pVideoDecCtx, NULL);
+	if (pAudioDecCtx)
+		DecodePacket(pAudioDecCtx, NULL);
 
 end:// 资源释放
+	av_packet_free(&pPkt);
+	av_frame_free(&pFrame);
 	// av_freep和av_free的区别在于，前者会将指针置为NULL
 	av_freep(&videoData[0]);
 	SAFE_POINTER_CALL(pAudioFile, fclose(pAudioFile));
