@@ -18,6 +18,12 @@ extern "C"
 #include <libavutil/timestamp.h>
 }
 
+#include <cstdio>
+#include <cstdint>
+#include "utils.h"	
+
+#include "SDL2/SDL.h"
+
 #pragma comment(lib,"avformat.lib")
 #pragma comment(lib,"avcodec.lib")
 #pragma comment(lib,"swscale.lib")
@@ -29,11 +35,7 @@ extern "C"
 #else
 #pragma comment(lib,"SDL2.lib")
 #pragma comment(lib,"manual-link/SDL2main.lib")
-#endif
-
-#include <cstdio>
-#include <cstdint>
-#include "utils.h"		
+#endif	
 
 // 将全局变量或者函数声明为static是为了让它仅在本文件中可见
 
@@ -64,6 +66,10 @@ static AVFrame*		pFrame				= NULL;
 static int			iVideoFrameCount	= 0;
 static int			iAudioFrameCount	= 0;
 
+static SDL_Window*		pMainWin	= NULL;
+static SDL_Renderer*	pRender		= NULL;
+static SDL_Texture*		pTexture	= NULL;
+static SDL_Rect			rect;
 
 /**
  * 打开一个流
@@ -157,6 +163,19 @@ static int OutputVideoFrame(AVFrame* pFrame)
 	return 0;
 }
 
+static void RenderTextute(AVFrame* pFrame)
+{
+	if (NULL == pMainWin || NULL == pRender || NULL == pTexture)
+		return;
+
+	SDL_UpdateTexture(pTexture, &rect, pFrame->data[0], pFrame->linesize[0]);
+	SDL_RenderClear(pRender);
+	SDL_RenderCopy(pRender, pTexture, NULL, &rect);
+	SDL_RenderPresent(pRender);
+
+	SDL_Delay(40);
+}
+
 static int OutputAudioFrame(AVFrame* pFrame)
 {
 	size_t iUnpaddedLinesize = pFrame->nb_samples * av_get_bytes_per_sample((AVSampleFormat)pFrame->format);
@@ -201,7 +220,20 @@ static int DecodePacket(AVCodecContext* pDec, const AVPacket* pPkt)
 		}
 
 		if (AVMEDIA_TYPE_VIDEO == pVideoDecCtx->codec->type)
-			iRet = OutputVideoFrame(pFrame);
+		{
+			//iRet = OutputVideoFrame(pFrame);
+#if 0
+			static int iCount = 1;
+			if (1 == iCount)
+			{
+				FILE* pOut = fopen("../output/temp.yuv", "wb+");
+				fwrite(pFrame->data[0], 1, pFrame->linesize[0] * pFrame->height * 3 / 2, pOut);
+				fclose(pOut);
+			}
+			++iCount;
+#endif
+			RenderTextute(pFrame);
+		}
 		else
 			iRet = OutputAudioFrame(pFrame);
 
@@ -319,6 +351,42 @@ int main(int argc,char* argv[])
 
 		goto end;
 	}
+
+	// 初始化SDL
+	iRet = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER);
+	if (0 != iRet)
+	{
+		fprintf(stderr, "Could not initial SDL\n");
+
+		goto end;
+	}
+	pMainWin = SDL_CreateWindow("simple player", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, iWidth, iHeight, SDL_WINDOW_OPENGL);
+	if (NULL == pMainWin)
+	{
+		fprintf(stderr, "Could not create sdl window\n");
+
+		goto end;
+	}
+	pRender = SDL_CreateRenderer(pMainWin, -1, 0);
+	if (NULL == pRender)
+	{
+		fprintf(stderr, "Could not create sdl renderer\n");
+
+		goto end;
+	}
+	// 默认yuv420p
+	pTexture = SDL_CreateTexture(pRender, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, iWidth, iHeight);
+	if (NULL == pTexture)
+	{
+		fprintf(stderr, "Could not create sdl texture\n");
+
+		goto end;
+	}
+	rect.x = 0;
+	rect.y = 0;
+	rect.w = iWidth;
+	rect.h = iHeight;
+
 	// 开始解码
 	while (av_read_frame(pFmtCtx, pPkt) >= 0)
 	{
@@ -328,6 +396,7 @@ int main(int argc,char* argv[])
 			iRet = DecodePacket(pAudioDecCtx, pPkt);
 		else
 			// TODO: other
+
 		av_packet_unref(pPkt);
 
 		if(iRet < 0)// 返回值小于0说明有未知错误发生
@@ -340,6 +409,14 @@ int main(int argc,char* argv[])
 		DecodePacket(pAudioDecCtx, NULL);
 
 end:// 资源释放
+	if (pTexture)
+		SDL_DestroyTexture(pTexture);
+	if (pRender)
+		SDL_DestroyRenderer(pRender);
+	if (pMainWin)
+		SDL_DestroyWindow(pMainWin);
+	SDL_Quit();
+
 	av_packet_free(&pPkt);
 	av_frame_free(&pFrame);
 	// av_freep和av_free的区别在于，前者会将指针置为NULL
