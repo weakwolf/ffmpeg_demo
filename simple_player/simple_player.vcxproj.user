@@ -4,4 +4,8 @@
     <LocalDebuggerCommandArguments>$(ProjectDir)..\resource\bigbuckbunny_480x272.h265 $(ProjectDir)..\output\video.raw $(ProjectDir)..\output\audio.raw</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerCommandArguments>$(ProjectDir)..\resource\bigbuckbunny_480x272.h265 $(ProjectDir)..\output\video.raw $(ProjectDir)..\output\audio.raw</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
 </Project>

@@ -22,6 +22,8 @@ extern "C"
 #include <cstdint>
 #include "utils.h"	
 
+#include <atomic>
+
 #include "SDL2/SDL.h"
 
 #pragma comment(lib,"avformat.lib")
@@ -36,6 +38,8 @@ extern "C"
 #pragma comment(lib,"SDL2.lib")
 #pragma comment(lib,"manual-link/SDL2main.lib")
 #endif	
+
+using byte = unsigned char;
 
 // 将全局变量或者函数声明为static是为了让它仅在本文件中可见
 
@@ -63,6 +67,9 @@ static int				iVideoBufSize	= -1;
 
 static AVPacket*	pPkt				= NULL;
 static AVFrame*		pFrame				= NULL;
+static AVFrame*		pFrameYuv			= NULL;
+static byte*		pYuv				= NULL;
+static SwsContext*	pSwsCtx				= NULL;
 static int			iVideoFrameCount	= 0;
 static int			iAudioFrameCount	= 0;
 
@@ -70,6 +77,34 @@ static SDL_Window*		pMainWin	= NULL;
 static SDL_Renderer*	pRender		= NULL;
 static SDL_Texture*		pTexture	= NULL;
 static SDL_Rect			rect;
+
+static std::atomic_bool bExit	= false;
+static std::atomic_bool bPause	= false;
+static SDL_Event		event;
+#define SFM_REFRESH_EVENT (SDL_USEREVENT + 1)
+#define SFM_BREAK_EVENT (SDL_USEREVENT + 2)
+
+
+static int RefreshTexture(void* opaque)
+{
+	while (!bExit)
+	{
+		if (!bPause)
+		{
+			SDL_Event event;
+			event.type = SFM_REFRESH_EVENT;
+			SDL_PushEvent(&event);
+		}
+		SDL_Delay(40);
+	}
+
+	// 退出事件
+	SDL_Event event;
+	event.type = SFM_BREAK_EVENT;
+	SDL_PushEvent(&event);
+
+	return 0;
+}
 
 /**
  * 打开一个流
@@ -172,8 +207,6 @@ static void RenderTextute(AVFrame* pFrame)
 	SDL_RenderClear(pRender);
 	SDL_RenderCopy(pRender, pTexture, NULL, &rect);
 	SDL_RenderPresent(pRender);
-
-	SDL_Delay(40);
 }
 
 static int OutputAudioFrame(AVFrame* pFrame)
@@ -232,7 +265,14 @@ static int DecodePacket(AVCodecContext* pDec, const AVPacket* pPkt)
 			}
 			++iCount;
 #endif
+			// 转为yuv420p
+			sws_scale(pSwsCtx, pFrame->data, pFrame->linesize, 0, iHeight, pFrameYuv->data, pFrameYuv->linesize);
+#if 1
+			RenderTextute(pFrameYuv);
+#else
+			// 如果不用sws_scale转一下，会出现绿场
 			RenderTextute(pFrame);
+#endif
 		}
 		else
 			iRet = OutputAudioFrame(pFrame);
@@ -338,12 +378,23 @@ int main(int argc,char* argv[])
 		printf("Demuxing audio from file '%s' into '%s'\n", pFilePath, pAudioOutput);
 
 	pFrame = av_frame_alloc();
-	if (!pFrame)
+	pFrameYuv = av_frame_alloc();
+	if (!pFrame || !pFrameYuv)
 	{
 		fprintf(stderr, "could not allocate frame\n");
 
 		goto end;
 	}
+	pYuv = (byte*)av_malloc(av_image_get_buffer_size(AV_PIX_FMT_YUV420P, iWidth, iHeight, 1));
+	av_image_fill_arrays(pFrameYuv->data, pFrameYuv->linesize, pYuv, AV_PIX_FMT_YUV420P, iWidth, iHeight, 1);
+	pSwsCtx = sws_getContext(iWidth, iHeight, pixFmt, iWidth, iHeight, AV_PIX_FMT_YUV420P, SWS_BICUBIC, NULL, NULL, NULL);
+	if (!pSwsCtx)
+	{
+		fprintf(stderr, "Could not get scale context\n");
+
+		goto end;
+	}
+
 	pPkt = av_packet_alloc();
 	if (!pPkt)
 	{
@@ -387,26 +438,51 @@ int main(int argc,char* argv[])
 	rect.w = iWidth;
 	rect.h = iHeight;
 
-	// 开始解码
-	while (av_read_frame(pFmtCtx, pPkt) >= 0)
+	SDL_CreateThread(RefreshTexture, NULL, NULL);
+
+	while (true)
 	{
-		if (iVideoIndex == pPkt->stream_index)// 视频帧
-			iRet = DecodePacket(pVideoDecCtx, pPkt);
-		else if (iAudioIndex == pPkt->stream_index)// 音频帧
-			iRet = DecodePacket(pAudioDecCtx, pPkt);
-		else
-			// TODO: other
+		SDL_WaitEvent(&event);
+		if (SFM_REFRESH_EVENT == event.type)
+		{
+			iRet = av_read_frame(pFmtCtx, pPkt);
+			if(iRet >= 0)
+			{
+				if (iVideoIndex == pPkt->stream_index)// 视频帧
+					iRet = DecodePacket(pVideoDecCtx, pPkt);
+				else if (iAudioIndex == pPkt->stream_index)// 音频帧
+					iRet = DecodePacket(pAudioDecCtx, pPkt);
 
-		av_packet_unref(pPkt);
+				av_packet_unref(pPkt);
 
-		if(iRet < 0)// 返回值小于0说明有未知错误发生
+				if (iRet < 0)// 返回值小于0说明有未知错误发生，直接退出
+					bExit = true;
+			}
+			else
+			{
+				// 到达文件末尾或者遇到末尾
+				bExit = true;
+			}
+		}
+		else if (SDL_KEYDOWN == event.type)
+		{
+			if (SDLK_SPACE == event.key.keysym.sym)
+				bPause = !bPause;
+			else if (SDLK_ESCAPE == event.key.keysym.sym)
+				bExit = true;
+		}
+		else if (SFM_BREAK_EVENT == event.type)
+		{
+			// flush decoders
+			if (pVideoDecCtx)
+				DecodePacket(pVideoDecCtx, NULL);
+			if (pAudioDecCtx)
+				DecodePacket(pAudioDecCtx, NULL);
+
 			break;
+		}
 	}
-	// flush decoders
-	if (pVideoDecCtx)
-		DecodePacket(pVideoDecCtx, NULL);
-	if (pAudioDecCtx)
-		DecodePacket(pAudioDecCtx, NULL);
+
 
 end:// 资源释放
 	if (pTexture)
@@ -419,8 +495,11 @@ end:// 资源释放
 
 	av_packet_free(&pPkt);
 	av_frame_free(&pFrame);
+	av_frame_free(&pFrameYuv);
 	// av_freep和av_free的区别在于，前者会将指针置为NULL
 	av_freep(&videoData[0]);
+	av_freep(&pYuv);
+	sws_freeContext(pSwsCtx);
 	SAFE_POINTER_CALL(pAudioFile, fclose(pAudioFile));
 	SAFE_POINTER_CALL(pVideoFile, fclose(pVideoFile));
 	avcodec_free_context(&pVideoDecCtx);
