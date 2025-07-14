@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple_player", "simple_pla
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "sdl_test", "sdl_test\sdl_test.vcxproj", "{815EB1DA-F74C-404F-9A89-8301FAEB23F3}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple_audio_player", "simple_audio_player\simple_audio_player.vcxproj", "{952C4E9A-6C32-4B36-900F-464A2BC8743B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,6 +29,12 @@ Global
 		{815EB1DA-F74C-404F-9A89-8301FAEB23F3}.Release|x64.ActiveCfg = Release|x64
 		{815EB1DA-F74C-404F-9A89-8301FAEB23F3}.Release|x64.Build.0 = Release|x64
 		{815EB1DA-F74C-404F-9A89-8301FAEB23F3}.Release|x86.ActiveCfg = Release|x64
+		{952C4E9A-6C32-4B36-900F-464A2BC8743B}.Debug|x64.ActiveCfg = Debug|x64
+		{952C4E9A-6C32-4B36-900F-464A2BC8743B}.Debug|x64.Build.0 = Debug|x64
+		{952C4E9A-6C32-4B36-900F-464A2BC8743B}.Debug|x86.ActiveCfg = Debug|x64
+		{952C4E9A-6C32-4B36-900F-464A2BC8743B}.Release|x64.ActiveCfg = Release|x64
+		{952C4E9A-6C32-4B36-900F-464A2BC8743B}.Release|x64.Build.0 = Release|x64
+		{952C4E9A-6C32-4B36-900F-464A2BC8743B}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

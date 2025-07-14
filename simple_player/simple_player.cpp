@@ -217,10 +217,6 @@ static int OutputAudioFrame(AVFrame* pFrame)
 		iAudioFrameCount++, pFrame->nb_samples,
 		pFrame->pts, av_q2d(pAudioDecCtx->time_base));
 
-	av_image_copy2(videoData, videoLinesize, pFrame->data,
-		pFrame->linesize, pixFmt,
-		iWidth, iHeight);
-
 	fwrite(pFrame->extended_data[0], 1, iUnpaddedLinesize, pAudioFile);
 
 	return 0;
