@@ -113,7 +113,7 @@ int main(int argc, char* argv[])
 		fread(pFrame->data[1], 1, iWidth * iHeight / 4, pIn);
 		fread(pFrame->data[2], 1, iWidth * iHeight / 4, pIn);
 		// *1000ÊÇ×ª»»Îªms
-		pFrame->pts = iFrameIndex * av_q2d(pCodecCtx->time_base) * 1000;
+		pFrame->pts = iFrameIndex / av_q2d(pCodecCtx->framerate) / av_q2d(pCodecCtx->time_base);
 		++iFrameIndex;
 		iRet = avcodec_send_frame(pCodecCtx, pFrame);
 		if (iRet < 0)
