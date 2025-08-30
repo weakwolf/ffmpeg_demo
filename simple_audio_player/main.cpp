@@ -87,6 +87,7 @@ static void FillAudio(void* opaque, Uint8* pStream, int iLen)
 
 	WaitForSingleObject(hEvent1, 1000);
 	printf("sdl play one frame\n");
+	ResetEvent(hEvent1);
 	// SDL2必须先调用SDL_memset清空缓冲区，你可以试试不调会怎样
 	SDL_memset(pStream, 0, iLen);
 	iLen = iLen > iFrameSize ? iFrameSize : iLen;
