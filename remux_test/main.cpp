@@ -55,6 +55,7 @@ int main(int argc, char* argv[])
 		PRINT_FFMPEG_ERROR("Find stream info failed\n", iRet);
 		goto end;
 	}
+	// 如果这里把输出文件改为一个推流地址，例如rtmp地址，则这个程序就变成了一个推流程序
 	iRet = avformat_alloc_output_context2(&pOutputFmt, NULL, NULL, argv[2]);
 	if (iRet < 0)
 	{
